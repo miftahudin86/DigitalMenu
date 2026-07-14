@@ -112,8 +112,8 @@
                         <?php endif; ?>
                         <div class="menu-card-footer">
                             <span class="menu-price">Rp <?= number_format($menu['price'], 0, ',', '.') ?></span>
-                            <button class="menu-order-btn" onclick="alert('Silakan pesan langsung ke kasir!')">
-                                Pesan
+                            <button class="menu-order-btn" onclick="addToCart(<?= $menu['id'] ?>, '<?= esc(addslashes($menu['name'])) ?>', <?= $menu['price'] ?>)">
+                                Tambah
                             </button>
                         </div>
                     </div>
@@ -135,12 +135,151 @@
     <?php endif; ?>
 </div>
 
+<!-- ── Cart UI ───────────────────────────────────────────────────────────── -->
+<div id="cartBtn" class="cart-floating-btn" onclick="toggleCart()">
+    🛒 <span id="cartCount">0</span>
+</div>
+
+<div id="cartSidebar" class="cart-sidebar">
+    <div class="cart-header">
+        <h2>Pesanan Anda</h2>
+        <button onclick="toggleCart()" class="cart-close">&times;</button>
+    </div>
+    <div class="cart-body" id="cartItems">
+        <p style="text-align:center;color:#888;">Keranjang kosong.</p>
+    </div>
+    <div class="cart-footer">
+        <div class="cart-total">
+            <span>Total:</span>
+            <span id="cartTotal">Rp 0</span>
+        </div>
+        <button class="cart-checkout-btn" onclick="submitOrder()">Checkout Sekarang</button>
+    </div>
+</div>
+<div id="cartOverlay" class="cart-overlay" onclick="toggleCart()"></div>
+
 <!-- ── Footer ──────────────────────────────────────────────────────────── -->
 <footer class="pub-footer">
     <p>&copy; <?= date('Y') ?> <strong>Digital Menu</strong> — Powered by CodeIgniter 4 &amp; AWS S3</p>
 </footer>
 
 <script>
+// Cart Logic
+let cart = JSON.parse(localStorage.getItem('digitalMenuCart')) || [];
+const tableNum = <?= isset($tableInfo) && $tableInfo ? $tableInfo['number'] : 'null' ?>;
+
+function updateCartUI() {
+    const cartCount = document.getElementById('cartCount');
+    const cartItems = document.getElementById('cartItems');
+    const cartTotal = document.getElementById('cartTotal');
+    
+    let totalQty = 0;
+    let total = 0;
+    let html = '';
+
+    if (cart.length === 0) {
+        html = '<p style="text-align:center;color:#888;">Keranjang kosong.</p>';
+    } else {
+        cart.forEach((item, index) => {
+            totalQty += item.qty;
+            total += (item.price * item.qty);
+            html += `
+                <div class="cart-item">
+                    <div class="cart-item-info">
+                        <h4>${item.name}</h4>
+                        <div class="cart-item-price">Rp ${(item.price * item.qty).toLocaleString('id-ID')}</div>
+                    </div>
+                    <div class="cart-item-actions">
+                        <button onclick="updateQty(${index}, -1)">-</button>
+                        <span>${item.qty}</span>
+                        <button onclick="updateQty(${index}, 1)">+</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    cartCount.innerText = totalQty;
+    cartItems.innerHTML = html;
+    cartTotal.innerText = 'Rp ' + total.toLocaleString('id-ID');
+    
+    // Save to local storage
+    localStorage.setItem('digitalMenuCart', JSON.stringify(cart));
+}
+
+function addToCart(id, name, price) {
+    const existing = cart.find(i => i.id === id);
+    if (existing) {
+        existing.qty += 1;
+    } else {
+        cart.push({ id, name, price, qty: 1 });
+    }
+    updateCartUI();
+    toggleCart(); // Show cart when item added
+}
+
+function updateQty(index, change) {
+    cart[index].qty += change;
+    if (cart[index].qty <= 0) {
+        cart.splice(index, 1);
+    }
+    updateCartUI();
+}
+
+function toggleCart() {
+    const sidebar = document.getElementById('cartSidebar');
+    const overlay = document.getElementById('cartOverlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+}
+
+function submitOrder() {
+    if (cart.length === 0) {
+        alert('Keranjang Anda kosong!');
+        return;
+    }
+    if (!tableNum) {
+        alert('Nomor meja belum terdeteksi. Silakan scan QR code di meja Anda terlebih dahulu.');
+        return;
+    }
+
+    const btn = document.querySelector('.cart-checkout-btn');
+    btn.disabled = true;
+    btn.innerText = 'Memproses...';
+
+    fetch('<?= site_url('/customer/order') ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            table: tableNum,
+            cart: cart
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            localStorage.removeItem('digitalMenuCart');
+            window.location.href = '<?= site_url('/dashboard-pelanggan') ?>';
+        } else {
+            alert('Gagal: ' + data.message);
+            btn.disabled = false;
+            btn.innerText = 'Checkout Sekarang';
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('Terjadi kesalahan jaringan.');
+        btn.disabled = false;
+        btn.innerText = 'Checkout Sekarang';
+    });
+}
+
+// Initialize on load
+updateCartUI();
+
 // Category filter logic
 const catBtns = document.querySelectorAll('.cat-btn');
 const sections = document.querySelectorAll('.category-section');

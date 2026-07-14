@@ -6,6 +6,8 @@ use CodeIgniter\Router\RouteCollection;
 
 // ─── Public ────────────────────────────────────────────────────────────────
 $routes->get('/', 'Home::index');
+$routes->post('/customer/order', 'Customer::submitOrder');
+$routes->get('/dashboard-pelanggan', 'Customer::dashboard');
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 $routes->get('/auth', 'Auth::index');
